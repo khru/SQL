@@ -10,9 +10,16 @@ create table empleado (
 create table cocinero(
 	dni varchar(11) not null,
 	nss varchar(14) not null,
-	fech_entrada date not null,
 	primary key(dni),
 	foreign key (dni) references cocinero(dni)
+	);
+create table pinche (
+	dni varchar(11) not null,
+	fech_nacimiento varchar(11) not null,
+	fech_entrada date not null,
+	encargado varchar(11) not null,
+	primary key(dni),
+	foreign key(encargado) references cocinero(dni);
 	);
 
 create table almacen (
