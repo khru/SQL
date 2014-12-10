@@ -24,7 +24,7 @@ create table matricula (
 		DNI varchar(11) not null,
 		cod_asign integer not null,
 		curso varchar(9) not null,
-		primary key (DNI, cod_asign, curso), // clave compuesta por 3 campor
+		primary key (DNI, cod_asign, curso), // clave compuesta por 3 campos
 		foreign key (cod_asign) references asignatura(cod_asign) on update cascade );	//Se ha de decir que campo es el de la clave que apunta a otra 
 		//tabla y que tabla y campo es de la otra tabla
 		/* OPCIONES: 
