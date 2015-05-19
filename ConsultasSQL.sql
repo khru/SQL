@@ -935,3 +935,24 @@ de final expr2
 # YEAR(fecha) Devuelve el año para una fecha, en el rango de 1000 a 9999
 # MONTH(fecha) Devuelve el mes de una fecha, en el rango de 1 a 12.
 # DAY(fecha) Devuelve el día del mes de una fecha, en el rango de 1 a 31.
+
+/* Ánalisis TOP(N)*/
+SELECT * FROM person AS px
+WHERE (
+  SELECT COUNT(*)
+  FROM person AS py
+  WHERE py.age < px.age
+) < 3;
+
+/* OPERADOR DIVISOR*/
+SELECT DISTINCT x.A
+FROM T1 AS x
+WHERE NOT EXISTS (
+                  SELECT *
+                  FROM  T2 AS y
+                  WHERE NOT EXISTS (
+                                     SELECT *
+                                     FROM T1 AS z
+                                     WHERE (z.A=x.A) AND (z.B=y.B)
+                                   )
+																	);
