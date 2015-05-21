@@ -935,6 +935,260 @@ de final expr2
 # YEAR(fecha) Devuelve el año para una fecha, en el rango de 1000 a 9999
 # MONTH(fecha) Devuelve el mes de una fecha, en el rango de 1 a 12.
 # DAY(fecha) Devuelve el día del mes de una fecha, en el rango de 1 a 31.
+/*-----------------------------------------------------------------------------------------------------------*/
+/*					 UNIDAD 10 MANIPULACION DE DATOS  				     */
+/*-----------------------------------------------------------------------------------------------------------*/
+
+/* En esta vista no se puede insertar nada porque los campos calculados no se encuentran en la tabla base */
+/* No deja añadirle datos */
+CREATE VIEW v_articulo_error as
+SELECT cod_art, descripcion, precio, precio * 0.21 as IVA, precio * 1.21 as PVP
+FROM articulo;
+
+/* Aqui si se puede insertar */
+/*Como en esta vista se ven los campos que son oblicatorios porque son not null y el stock tiene un defaul de 100*/
+/*Puedes insertar articulos dentro de esta vista*/
+CREATE VIEW v_articulo_correcto as
+SELECT cod_art, descripcion, precio
+FROM articulo;
+
+insert  into v_articulo_correcto(cod_art, descripcion, precio) values ('ART-999', 'Conector RJ45', 3.50);
+
+begin;
+CREATE USER 'khru'@'localhost' IDENTIFIED BY 'passwd';
+GRANT SELECT,UPDATE, DELETE, INSERT ON comercial.v_articulo_correcto  TO 'khru'@'localhost';
+commit;
+
+/* 1-  Hallar todos los datos de los clientes mayores de 20 años a fecha de hoy */
+SELECT * 
+FROM cliente 
+WHERE DATEDIFF(NOW(),fecha_nac)/365 > 20;
+/* 2- Hallar todos los datos de los clientes mayores de 35 años que residan en un distrito de codigo postal 30001 */
+SELECT * 
+FROM cliente 
+WHERE DATEDIFF(NOW(), fecha_nac)/365 > 35
+AND cod_postal = '30001';
+/* 3- Hallar el nº de clientes qye residan en cada uno de los distritos (que tengan mismo código postal) En la salida  */
+SELECT cod_postal ,count(*)
+FROM cliente
+GROUP BY cod_postal;
+/* 4- Hallar los diferentes códigos postales donde tenemos tanto clientes como comerciales.*/
+SELECT distinct(cl.cod_postal)
+FROM cliente as cl, comercial as co
+WHERE cl.cod_postal = co.cod_postal;
+/*-------------------------------------*/
+SELECT cl.cod_postal
+FROM cliente as cl, comercial as co
+WHERE cl.cod_postal = co.cod_postal
+GROUP BY cl.cod_postal;
+
+/* 5- Hallar la media de los stocks de artículos. (solo con dos decimales) */
+SELECT truncate(avg(stock), 2)
+FROM articulo;
+
+/* 6- Hallar la media del precio unitario de los artículos que se hayan vendido en 2014 (que aparezcan en albaranes de 2014) (solo con dos decimales)*/
+SELECT ROUND(avg(precio),2)
+FROM albaran as al , articulo as ar
+WHERE fecha_alb between '2014-01-01'AND '2014-12-31'
+AND  al.cod_art = ar.cod_art;
+/**********************************************************/
+SELECT truncate(avg(precio),2)
+FROM albaran as al , articulo as ar
+WHERE fecha_alb between '2014-01-01'AND '2014-12-31'
+AND  al.cod_art = ar.cod_art;
+
+/* 7- Hallar el código y descripción de aquellos artículos que están por encima del precio medio de todos los artículos */
+SELECT cod_art, descripcion 
+FROM articulo
+WHERE precio > (SELECT avg(precio) FROM articulo);
+
+/* 8- Hallar el valor total actual del almacen. (lo que valen todos los artículos que tenemos en stock almacenados). */
+SELECT SUM(precio * stock) as 'Precio Total'
+FROM articulo;
+
+/* 9 - Hallar el valor de la facturación total en 2012 */
+SELECT SUM(IMPORTE) as 'facturación total 2012'
+FROM factura
+WHERE YEAR(fecha_fac) = '2012';
+
+/* 10- Hallar el valor de la facturación total en cada distrito (codigo_postal de cliente). Incluye en la salida el código postal y la facturación total para ese distrito.*/
+SELECT cod_postal, SUM(importe) as 'facturación total por zona'
+FROM factura, cliente
+WHERE cliente.dni = factura.dni
+GROUP BY cod_postal;
+
+/* 11- Hallar (en una solo consulta) el valor de la facturación total por cada año. Incluye el valor total y el año en el resultado de la consulta. */
+SELECT YEAR(fecha_fac) as año, SUM(importe) as 'facturación total'
+FROM factura
+GROUP BY YEAR(fecha_fac);
+
+/* 12- Hallar (para cada factura) el nº de albaranes que la componen. Incluye el cod_fact y el nº de albaranes en el resultado de la consulta. */
+SELECT factura.cod_fac, count(cod_alb)
+FROM albaran, factura
+WHERE factura.cod_fac = albaran.cod_fac
+GROUP BY factura.cod_fac;
+
+/* POR SI HAY FACTURAS SIN ALBARAN */
+SELECT factura.cod_fac, count(*)
+FROM factura LEFT OUTER JOIN albaran on factura.cod_fac = albaran.cod_fac
+GROUP BY factura.cod_fac;
+
+
+/* 13- Hallar todos los datos de la factura de mayor importe.*/
+SELECT *
+FROM factura
+WHERE importe = (SELECT max(importe) FROM factura);
+/* 14- Hallar los cod_fact e importe de las facturas correspondientes a los tres mayores importes. */
+SELECT cod_fac, importe
+FROM factura as f1
+WHERE (
+SELECT COUNT(*)
+FROM factura AS f2
+WHERE f1.importe < f2.importe
+) < 3
+ORDER BY f1.importe DESC;
+/*  15- Hallar todos los datos de tres facturas de mayor importe. */
+SELECT *
+FROM factura
+ORDER BY importe DESC
+LIMIT 3;
+
+/* 16- Hallar todos los datos de los artículos cuyo media de ventas para ese articulo
+(media del nº de unidades vendidas en cada albaran para ese artículo) suponga
+40% o más del stock actual para ese artículo. */
+
+SELECT *
+FROM articulo
+WHERE stock*0.4 <= (SELECT AVG(cantidad) From albaran WHERE albaran.cod_art = articulo.cod_art);
+
+
+/* 17- Hallar todos los datos de los albaranes correspondientes a los tres mayores 
+importes de albaranes (Ayuda: hay que calcular el importe de cada albaran ya que
+no esta en la tabla) (puedes utilizar una tabla temporal(TEMPORARY) para
+resultados intermedios)*/
+
+/*  CON TABLAS TEMPORALES */
+CREATE TEMPORARY table t_albaran  as SELECT cod_alb, cantidad * precio as 'total' FROM articulo, albaran WHERE articulo.cod_art = albaran.cod_art;
+CREATE TEMPORARY table t_ayuda  as SELECT cod_alb, cantidad * precio as 'total' FROM articulo, albaran WHERE articulo.cod_art = albaran.cod_art;
+
+SELECT * FROM t_albaran AS t1
+WHERE (
+SELECT COUNT(*)
+FROM t_ayuda AS t2
+WHERE t1.total < t2.total
+) < 3
+order by t1.total desc;
+
+drop table t_albaran;
+drop table t_ayuda;
+
+/* CON VISTAS*/
+begin;
+CREATE VIEW  v_albaran  as SELECT cod_alb, cantidad * precio as 'total' FROM articulo, albaran WHERE articulo.cod_art = albaran.cod_art;
+/* AUNQUE HAYA 3 VALORES IGUALES en el total los albaranes son distintos*/
+SELECT * FROM v_albaran AS t1
+WHERE (
+SELECT COUNT(*)
+FROM v_albaran AS t2
+WHERE t1.total < t2.total
+) < 3
+order by t1.total desc;
+commit;
+/* 18- Hallar, para cada cliente, el dni junto con su facturación total.*/
+SELECT cliente.dni as 'DNI', SUM(importe) as 'facturación total'
+FROM cliente, factura
+WHERE cliente.dni = factura.dni
+GROUP BY cliente.dni;
+
+/* 19- Hallar para cada comercial, el importe total de la facturación originada por los
+clientes que ha visitado alguna vez. Incluye dni de comercial y facturación de sus 
+clientes. (Atención a no sumar repetidas veces importes de facturas. Puedes
+utilizar una tabla temporal TEMPORARY para resultados intermedios) */
+begin;
+drop TEMPORARY  table if exists t_comercial;
+CREATE TEMPORARY TABLE t_comercial as 
+SELECT cliente.dni as 'DNI',SUM(importe) as 'total'
+FROM cliente, factura
+WHERE cliente.dni = factura.dni
+GROUP BY cliente.dni;
+
+SELECT distinct(comercial.dni), total
+FROM t_comercial, comercial, visita as v
+WHERE comercial.dni = dni_comercial
+AND dni_cli = t_comercial.dni
+commit;
+
+/* 20- Hallar la consulta para averiguar si existe algún artículo que se haya vendido a
+todos los clientes. Si existe indicar código de artículo y descripción. */
+
+/* 20- Hallar la consulta para averiguar si existe algún artículo que se haya vendido a
+todos los clientes. Si existe indicar código de artículo y descripción. */
+
+create TEMPORARY table albaran_fact_art as
+select articulo.cod_art, descripcion, dni, factura.cod_fac, albaran.cod_alb
+from articulo inner join albaran on (articulo.cod_art = albaran.cod_art) inner join factura on (albaran.cod_fac = factura.cod_fac) order by descripcion;
+SELECT * from albaran_fact_art;
+
+create TEMPORARY table albaran_fact_art2 as
+select articulo.cod_art, descripcion, dni, factura.cod_fac, cod_alb
+from articulo inner join albaran on (articulo.cod_art = albaran.cod_art) inner join factura on (albaran.cod_fac = factura.cod_fac) order by descripcion;
+SELECT * from albaran_fact_art2;
+
+select cod_art, descripcion 
+from articulo
+where cod_art in(select cod_art
+		from albaran_fact_art multi
+		where not exists (
+				select *
+				from cliente cli
+				where not exists (
+						select *
+						from albaran_fact_art2 as multibis
+						where multibis.cod_art = multi.cod_art and multibis.dni = cli.dni)));
+
+/* 21- Hallar si existe algún artículo (y si existe, indicar su código y descripción) que se
+haya vendido en todos los distritos (tomando como referencia de distrito el código
+postal del cliente). (Sin TEMPORARY tabla 100% de la nota, con TEMPORARY
+tabla 45% de la nota) */
+/*-----------------------------------------------------------------------------------------------------------*/
+/*						 VISTAS			 				     */
+/*-----------------------------------------------------------------------------------------------------------*/
+/* Crear una vista llamada v_cli_fact que muestre el dni, nombre y apellidos de los clientes,
+así como el importe total +21% de iva de su facturación hasta la fecha */
+/*Ninguna de las dos vistas permitirá inserción de datos porque tiene campos calculados*/
+begin;
+drop view if exists v_cli_fact;
+CREATE VIEW v_cli_fact as SELECT distinct(cliente.dni), nombre, apellidos, sum(importe * 1.21) as 'Importe + IVA' FROM cliente, factura WHERE cliente.dni = factura.dni GROUP BY cliente.dni, nombre, apellidos;
+SELECT * FROM v_cli_fact;
+commit;
+
+begin;
+drop view if exists v_distrito_fact;
+CREATE VIEW v_distrito_fact as SELECT distinct(cod_postal), sum(importe * 1.21) as 'Importe + IVA' FROM cliente, factura WHERE cliente.dni = factura.dni GROUP BY cod_postal;
+SELECT * FROM v_distrito_fact;
+commit;
+
+/* Carga datos de un fichero a una tabla */
+load data infile "cliente.cvs"
+into table cliente
+fields terminated by ','
+lines terminated by '\n';
+
+/* Cargar datos desde un fichero en local*/
+load data local infile "C:\Users\khru\Desktop\clientes.cvs"
+into table cliente
+fields terminated by ','
+lines terminated by '\n';
+
+/* ACTUALIZACIONES */
+begin;
+UPDATE cliente
+WHERE dni = '11111111A'
+SET apellidos = 'Pérez Pérez'
+commit;
+
+/*Hacer que MySQL haga bien los group by*/
+SET sql_mode='ONLY_FULL_GROUP_BY';
 
 /* Ánalisis TOP(N)*/
 SELECT * FROM person AS px
@@ -955,4 +1209,4 @@ WHERE NOT EXISTS (
                                      FROM T1 AS z
                                      WHERE (z.A=x.A) AND (z.B=y.B)
                                    )
-																	);
+		);
