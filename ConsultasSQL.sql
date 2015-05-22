@@ -1094,6 +1094,18 @@ WHERE t1.total < t2.total
 ) < 3
 order by t1.total desc;
 commit;
+
+/* sin tablas temporales un punto en la ealuación final */
+
+SELECT * 
+FROM (SELECT cod_alb, cantidad * precio as 'total' FROM articulo, albaran WHERE articulo.cod_art = albaran.cod_art) AS t1
+WHERE (
+SELECT COUNT(*)
+FROM (SELECT cod_alb, cantidad * precio as 'total' FROM articulo, albaran WHERE articulo.cod_art = albaran.cod_art) AS t2
+WHERE t1.total < t2.total
+) < 3
+order by t1.total desc;
+
 /* 18- Hallar, para cada cliente, el dni junto con su facturación total.*/
 SELECT cliente.dni as 'DNI', SUM(importe) as 'facturación total'
 FROM cliente, factura
@@ -1105,51 +1117,173 @@ clientes que ha visitado alguna vez. Incluye dni de comercial y facturación de 
 clientes. (Atención a no sumar repetidas veces importes de facturas. Puedes
 utilizar una tabla temporal TEMPORARY para resultados intermedios) */
 begin;
-drop TEMPORARY  table if exists t_comercial;
-CREATE TEMPORARY TABLE t_comercial as 
-SELECT cliente.dni as 'DNI',SUM(importe) as 'total'
+drop TEMPORARY table if exists importeClientes;
+CREATE TEMPORARY table importeClientes as SELECT cliente.dni as 'DNI',SUM(importe) as 'facturacion'
 FROM cliente, factura
 WHERE cliente.dni = factura.dni
 GROUP BY cliente.dni;
 
-SELECT distinct(comercial.dni), total
-FROM t_comercial, comercial, visita as v
-WHERE comercial.dni = dni_comercial
-AND dni_cli = t_comercial.dni
+SELECT distinct (dni_comercial), facturacion
+FROM visita, importeClientes
+WHERE visita.dni_cli = importeClientes.dni;
+
+drop TEMPORARY table if exists importeClientes;
 commit;
 
-/* 20- Hallar la consulta para averiguar si existe algún artículo que se haya vendido a
-todos los clientes. Si existe indicar código de artículo y descripción. */
+/* SIN TABLAS TEMPORALES */
+select distinct (dni_comercial), facturacion
+from visita, (SELECT cliente.dni as 'DNI',SUM(importe) as 'facturacion'
+				FROM cliente, factura
+				WHERE cliente.dni = factura.dni
+				GROUP BY cliente.dni) as importeClientes
+WHERE visita.dni_cli = importeClientes.dni;
 
 /* 20- Hallar la consulta para averiguar si existe algún artículo que se haya vendido a
 todos los clientes. Si existe indicar código de artículo y descripción. */
 
-create TEMPORARY table albaran_fact_art as
-select articulo.cod_art, descripcion, dni, factura.cod_fac, albaran.cod_alb
-from articulo inner join albaran on (articulo.cod_art = albaran.cod_art) inner join factura on (albaran.cod_fac = factura.cod_fac) order by descripcion;
-SELECT * from albaran_fact_art;
+/* Con 2 tablas temporales */
+begin;
+drop TEMPORARY table if exists table alb_fac_art
+drop TEMPORARY table if exists table alb_fac_art2
+create TEMPORARY table alb_fac_art as
+SELECT ar.cod_art, descripcion, dni, factura.cod_fac, cod_alb
+FROM articulo as ar, factura, albaran
+WHERE ar.cod_art = albaran.cod_art
+AND factura.cod_fac = albaran.cod_fac;
 
-create TEMPORARY table albaran_fact_art2 as
-select articulo.cod_art, descripcion, dni, factura.cod_fac, cod_alb
-from articulo inner join albaran on (articulo.cod_art = albaran.cod_art) inner join factura on (albaran.cod_fac = factura.cod_fac) order by descripcion;
-SELECT * from albaran_fact_art2;
+create TEMPORARY table alb_fac_art2 as
+SELECT ar.cod_art, descripcion, dni, factura.cod_fac, cod_alb
+FROM articulo as ar, factura, albaran
+WHERE ar.cod_art = albaran.cod_art
+AND factura.cod_fac = albaran.cod_fac;
 
 select cod_art, descripcion 
 from articulo
 where cod_art in(select cod_art
-		from albaran_fact_art multi
+		from alb_fac_art multi
 		where not exists (
+			select *
+			from cliente cli
+			where not exists (
 				select *
-				from cliente cli
-				where not exists (
-						select *
-						from albaran_fact_art2 as multibis
-						where multibis.cod_art = multi.cod_art and multibis.dni = cli.dni)));
+				from alb_fac_art2 as multibis
+				where multibis.cod_art = multi.cod_art and multibis.dni = cli.dni)));
+
+drop temporary table if exists alb_fac_art;
+drop temporary table if exists alb_fac_art2;
+commit;
+/* Con una vista */
+begin;
+create view  alb_fac_art as
+SELECT ar.cod_art, descripcion, dni, factura.cod_fac, cod_alb
+FROM articulo as ar, factura, albaran
+WHERE ar.cod_art = albaran.cod_art
+AND factura.cod_fac = albaran.cod_fac;
+
+select cod_art, descripcion 
+from alb_fac_art
+where cod_art in(select cod_art
+		from alb_fac_art multi
+		where not exists (
+			select *
+			from cliente cli
+			where not exists (
+				select *
+				from alb_fac_art as multibis
+				where multibis.cod_art = multi.cod_art and multibis.dni = cli.dni)));
+
+drop view alb_fac_art;
+commit;
+
+/* Sin tablas temporales y sin vistas */
+
+select cod_art, descripcion 
+from articulo
+where cod_art in(select cod_art
+		from (SELECT ar.cod_art, descripcion, dni, factura.cod_fac, cod_alb
+			FROM articulo as ar, factura, albaran
+			WHERE ar.cod_art = albaran.cod_art
+			AND factura.cod_fac = albaran.cod_fac) as  multi
+		where not exists (
+			select *
+			from cliente cli
+			where not exists (
+				select *
+				from (SELECT ar.cod_art, descripcion, dni, factura.cod_fac, cod_alb
+					FROM articulo as ar, factura, albaran
+					WHERE ar.cod_art = albaran.cod_art
+					AND factura.cod_fac = albaran.cod_fac) as multibis
+				where multibis.cod_art = multi.cod_art and multibis.dni = cli.dni)));
+/* De otra forma */
+SELECT cod_art, descripcion
+from articulo a1
+where not exists 
+	(select *
+		from cliente c2
+		where not exists
+			(select *
+			from albaran alb natural join factura natural join cliente 
+			where alb.cod_art=a1.cod_art and cliente.dni=c2.dni));
 
 /* 21- Hallar si existe algún artículo (y si existe, indicar su código y descripción) que se
 haya vendido en todos los distritos (tomando como referencia de distrito el código
 postal del cliente). (Sin TEMPORARY tabla 100% de la nota, con TEMPORARY
 tabla 45% de la nota) */
+/*  CON VISTAS */
+begin;
+
+create view v_alb_fac_art_cli as
+SELECT ar.cod_art, descripcion, cliente.dni, factura.cod_fac, cod_alb, cod_postal
+FROM articulo as ar, factura, albaran, cliente
+WHERE ar.cod_art = albaran.cod_art
+AND factura.cod_fac = albaran.cod_fac
+AND cliente.dni = factura.dni;
+
+select distinct(cod_art), descripcion
+from v_alb_fac_art_cli
+where cod_art in(select cod_art
+		from v_alb_fac_art_cli multi
+		where not exists (
+				select *
+				from cliente cli
+				where not exists (
+					select *
+					from v_alb_fac_art_cli as multibis
+					where multibis.cod_art = multi.cod_art and multibis.cod_postal = cli.cod_postal)));
+
+drop view v_alb_fac_art_cli;
+commit;
+/* Sin vistas ni tablas temporales*/
+select distinct(cod_art), descripcion
+from articulo
+where cod_art in(select cod_art
+				from (SELECT ar.cod_art, descripcion, cliente.dni, factura.cod_fac, cod_alb, cod_postal
+					FROM articulo as ar, factura, albaran, cliente
+					WHERE ar.cod_art = albaran.cod_art
+					AND factura.cod_fac = albaran.cod_fac
+					AND cliente.dni = factura.dni) as multi
+				where not exists (
+					select *
+					from cliente cli
+					where not exists (
+						select *
+						from (SELECT ar.cod_art, descripcion, cliente.dni, factura.cod_fac, cod_alb, cod_postal
+							FROM articulo as ar, factura, albaran, cliente
+							WHERE ar.cod_art = albaran.cod_art
+							AND factura.cod_fac = albaran.cod_fac
+							AND cliente.dni = factura.dni) as multibis
+						where multibis.cod_art = multi.cod_art and multibis.cod_postal = cli.cod_postal)));
+
+/* De la otra forma */
+SELECT cod_art, descripcion
+from articulo a1
+where not exists 
+	(select *
+		from cliente c2
+		where not exists
+			(select *
+			from albaran alb natural join factura natural join cliente 
+			where alb.cod_art=a1.cod_art and cliente.cod_postal=c2.cod_postal));
 /*-----------------------------------------------------------------------------------------------------------*/
 /*						 VISTAS			 				     */
 /*-----------------------------------------------------------------------------------------------------------*/
@@ -1166,6 +1300,13 @@ begin;
 drop view if exists v_distrito_fact;
 CREATE VIEW v_distrito_fact as SELECT distinct(cod_postal), sum(importe * 1.21) as 'Importe + IVA' FROM cliente, factura WHERE cliente.dni = factura.dni GROUP BY cod_postal;
 SELECT * FROM v_distrito_fact;
+commit;
+
+/* Vistas propias */
+begin;
+drop view if exists porc_art;
+CREATE View porc_art as SELECT cod_art, precio, concat(truncate(precio / (SELECT MAX(precio) FROM articulo) * 100,0),' ','%') as 'porcenmax', concat(truncate(precio / (SELECT AVG(precio) FROM articulo) * 100,0), ' ','%') as 'porcenmedia' FROM articulo;
+SELECT * from porc_art;
 commit;
 
 /* Carga datos de un fichero a una tabla */
@@ -1187,6 +1328,10 @@ WHERE dni = '11111111A'
 SET apellidos = 'Pérez Pérez'
 commit;
 
+/* CONFIGURACIONES de MYSQL */
+/*--------------------------*/
+/* Saber que transaciones*/
+SELECT @@GLOBAL.tx_isolation, @@tx_isolation;
 /*Hacer que MySQL haga bien los group by*/
 SET sql_mode='ONLY_FULL_GROUP_BY';
 
